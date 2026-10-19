@@ -91,15 +91,19 @@ function extractItems(html) {
 
 // --- HOME ---
 export async function home() {
-  kino.log(`Descargando página principal /movies/...`);
-  const html = await getHtml(`${BASE_URL}/movies/`);
+  kino.log(`Descargando catálogo desde home.php...`);
   
-  if (!html || html.length < 500) return [];
+  // Usamos getHtml apuntando directamente al archivo que no pide apodo
+  const html = await getHtml(`${BASE_URL}/movies/home.php`);
+  
+  if (!html || html.length < 50000) {
+    kino.log(`El HTML es muy corto o falló (${html ? html.length : 0} bytes).`);
+    return [];
+  }
 
   const categories = [];
 
   // 1. Extraer "Películas Estrenos"
-  // Cortamos el HTML donde dice "Películas Estrenos" y nos detenemos justo antes de "Top Series"
   const bloqueEstrenos = html.split(/Pel[ií]culas Estrenos/i)[1]?.split(/Top Series/i)[0] || "";
   const itemsEstrenos = extractItems(bloqueEstrenos);
   
@@ -113,7 +117,6 @@ export async function home() {
   }
 
   // 2. Extraer "Top Series"
-  // Cortamos el HTML donde dice "Top Series" y nos detenemos en "Películas más vistas"
   const bloqueTopSeries = html.split(/Top Series/i)[1]?.split(/Pel[ií]culas m[aá]s vistas/i)[0] || "";
   const itemsTopSeries = extractItems(bloqueTopSeries);
   
@@ -124,6 +127,15 @@ export async function home() {
       ref: "series", 
       items: itemsTopSeries 
     });
+  }
+
+  // PLAN B: Si los recortes fallan porque la página cambió una letra, mostramos todo
+  if (categories.length === 0) {
+    kino.log("No se encontraron las secciones exactas. Mostrando catálogo completo...");
+    const todosLosItems = extractItems(html);
+    if (todosLosItems.length > 0) {
+      categories.push({ id: "h-todo", title: "Catálogo", ref: "peliculas", items: todosLosItems });
+    }
   }
 
   kino.log(`Home cargado: ${itemsEstrenos.length} estrenos, ${itemsTopSeries.length} top series.`);
@@ -227,9 +239,11 @@ export async function resolve(ref) {
     } catch (e) {}
   }
 
+  //const mainHtml = await getHtml(ref);
+  //if (!mainHtml) throw kino.error("unavailable", "No se pudo cargar la página del reproductor.");
+// Dentro de tu función resolve...
   const mainHtml = await getHtml(ref);
   if (!mainHtml) throw kino.error("unavailable", "No se pudo cargar la página del reproductor.");
-
   const iframeRegex = /<iframe[^>]+src=["'](http[^"']+)["']/gi;
   let match;
   while ((match = iframeRegex.exec(mainHtml)) !== null) {
