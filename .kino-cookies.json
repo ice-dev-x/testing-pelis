@@ -1,0 +1,11 @@
+[
+ {
+  "name": "PHPSESSID",
+  "value": "m8oagt9eg7d050edkb11jsdol0",
+  "domain": "pelisjuanita.com",
+  "hostOnly": true,
+  "path": "/",
+  "secure": false,
+  "expires": 9007199254740991
+ }
+]

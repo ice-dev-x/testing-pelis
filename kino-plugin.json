@@ -1,0 +1,55 @@
+{
+  "id": "test-pelis-juanita",
+  "name": "Pelis Juanita (.com)",
+  "version": "1.0.0",
+  "apiVersion": 6,
+  "browser": true,
+  "entry": "plugin.js",
+ 
+  "icon": "icon.png",
+  "author": "sadmachine",
+  "description": "Versión HTML de pelisjuanita.com con bypass de apodo.",
+  "color": "#111111",
+  "theme": {
+    "accent": "#ff0000",
+    "background": "#0a0a0a"
+  },
+"hosts": [
+    "pelisjuanita.com",
+    "*.pelisjuanita.com",
+    "lulustream.com",
+    "*.lulustream.com",
+    "earnvids.com",
+    "*.earnvids.com",
+    "mixdrop.co",
+    "*.mixdrop.co",
+    "streamwish.to",
+    "*.streamwish.to",
+    "streamwish.com",
+    "*.streamwish.com",
+    "voe.sx",
+    "*.voe.sx"
+  ],
+  "streamHosts": "any",
+  
+  "capabilities": [
+    "search",
+    "home",
+  
+    "episodes",
+    "resolve"
+  ],
+  "categories": [
+    "movies",
+    "series"
+  ],
+  "config": [
+    {
+      "key": "apodo_usuario",
+      "type": "text",
+      "title": "Apodo de Acceso",
+      "default": "KinoUser",
+      "description": "El apodo necesario para saltar la pantalla de bienvenida."
+    }
+  ]
+}
