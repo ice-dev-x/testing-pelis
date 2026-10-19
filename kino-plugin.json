@@ -1,7 +1,7 @@
 {
   "id": "test-pelis-juanita",
   "name": "Pelis Juanita (.com)",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "apiVersion": 6,
   "browser": true,
   "entry": "plugin.js",
@@ -43,13 +43,13 @@
     "movies",
     "series"
   ],
-  "config": [
+"settings": [
     {
       "key": "apodo_usuario",
+      "label": "Apodo de Acceso",
       "type": "text",
-      "title": "Apodo de Acceso",
       "default": "KinoUser",
-      "description": "El apodo necesario para saltar la pantalla de bienvenida."
+      "hint": "El apodo necesario para saltar la pantalla de bienvenida."
     }
   ]
 }
