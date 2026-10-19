@@ -1,7 +1,28 @@
 export const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const BASE_URL = "https://pelisjuanita.com";
 let hasAccess = false;
+async function getHtml(url, ajax = false) {
+  try {
+    const r = await kino.fetch(url, { headers: getHeaders(ajax) });
+    if (r.ok) {
+      const t = await r.text();
+      if (!/name=["']apodo["']/i.test(t)) return t;
+    }
+    kino.log(`fetch ${url} -> ${r.status}`);
+  } catch (e) {
+    kino.log(`fetch error ${e.code || "error"}`);
+  }
 
+  if (!kino.browser || typeof kino.browser.page !== "function") return "";
+  try {
+    const p = await kino.browser.page(url, { timeoutMs: 12000 });
+    kino.log(`page ${url} -> ${p.status}, ${p.html ? p.html.length : 0} bytes`);
+    return p.html || "";
+  } catch (e) {
+    kino.log(`page error: ${e.code || "error"}`);
+    return "";
+  }
+}
 // --- 1. BYPASS DE SEGURIDAD (Dependiendo del gestor nativo de Kino) ---
 async function ensureAccess() {
   if (hasAccess) return;
@@ -81,19 +102,13 @@ function extractItems(html) {
 // --- 2. HOME ---
 export async function home() {
   await ensureAccess();
-  kino.log(`Descargando catálogo desde: ${BASE_URL}/movies/home.php`);
-  
-  let res = await kino.fetch(`${BASE_URL}/movies/home.php`, { headers: getHeaders(true) });
-  
-  if (!res.ok || res.status === 403) {
-    kino.log(`Fallo AJAX, intentando Plan B: Cargar página principal /movies/...`);
-    res = await kino.fetch(`${BASE_URL}/movies/`, { headers: getHeaders(false) });
-  }
-  
-  if (!res.ok) return [];
-  const html = await res.text();
+
+  let html = await getHtml(`${BASE_URL}/movies/home.php`, true);
+  if (!html) html = await getHtml(`${BASE_URL}/movies/`, false);
+
   const items = extractItems(html);
-  
+  kino.log(`home: ${html.length} bytes, ${items.length} items`);
+
   if (items.length === 0) return [];
   return [{ id: "h-recientes", title: "Catálogo PelisJuanita (.com)", ref: "inicio", items }];
 }
@@ -102,12 +117,8 @@ export async function home() {
 export async function search(query) {
   await ensureAccess();
   if (!query || !query.q) return [];
-  const term = encodeURIComponent(query.q);
-  
-  const res = await kino.fetch(`${BASE_URL}/movies/search?s=${term}`, { headers: getHeaders(false) });
-  if (!res.ok) return [];
-  
-  return extractItems(await res.text());
+  const html = await getHtml(`${BASE_URL}/movies/search?s=${encodeURIComponent(query.q)}`);
+  return extractItems(html);
 }
 
 // --- 4. EPISODES ---
