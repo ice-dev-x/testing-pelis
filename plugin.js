@@ -1,67 +1,51 @@
-export const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+export const UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
 const BASE_URL = "https://pelisjuanita.com";
-let hasAccess = false;
-async function getHtml(url, ajax = false) {
-  try {
-    const r = await kino.fetch(url, { headers: getHeaders(ajax) });
-    if (r.ok) {
-      const t = await r.text();
-      if (!/name=["']apodo["']/i.test(t)) return t;
-    }
-    kino.log(`fetch ${url} -> ${r.status}`);
-  } catch (e) {
-    kino.log(`fetch error ${e.code || "error"}`);
-  }
 
-  if (!kino.browser || typeof kino.browser.page !== "function") return "";
+// --- AYUDANTE MAESTRO: Fetch + Fallback a WebView ---
+async function getHtml(url, referer) {
+  // 1. Intentamos con fetch (rápido, por si Cloudflare nos deja pasar)
   try {
-    const p = await kino.browser.page(url, { timeoutMs: 12000 });
-    kino.log(`page ${url} -> ${p.status}, ${p.html ? p.html.length : 0} bytes`);
-    return p.html || "";
-  } catch (e) {
-    kino.log(`page error: ${e.code || "error"}`);
-    return "";
-  }
-}
-// --- 1. BYPASS DE SEGURIDAD (Dependiendo del gestor nativo de Kino) ---
-async function ensureAccess() {
-  if (hasAccess) return;
-  
-  let apodoStr = "KinoUser";
-  try { apodoStr = kino.config.get("apodo_usuario") || "KinoUser"; } catch(e) {}
-  
-  try {
-    kino.log(`Autorizando apodo en el servidor: ${apodoStr}`);
-    
-    // Al usar Kino en Android, la app guardará la cookie de sesión automáticamente al hacer POST
-    const res = await kino.fetch(`${BASE_URL}/inicio.php`, {
-      method: "POST",
-      headers: { 
-        "User-Agent": UA, 
-        "Content-Type": "application/x-www-form-urlencoded", 
-        "Referer": `${BASE_URL}/inicio.php`,
-        "Origin": BASE_URL
-      },
-      body: `apodo=${encodeURIComponent(apodoStr)}`
+    const res = await kino.fetch(url, { 
+      headers: { "User-Agent": UA, "Referer": referer || `${BASE_URL}/movies/` } 
     });
-    
-    kino.log(`Status de Bypass: ${res.status}`);
-    hasAccess = true;
-  } catch (error) {
-    kino.log(`Error en bypass: ${error.message}`);
+    if (res.ok && res.status !== 403) return await res.text();
+  } catch (e) {}
+
+  // 2. Si fetch falla (403), abrimos el WebView real de Kino
+  kino.log(`Fetch falló o dio 403. Usando WebView en: ${url}`);
+  try {
+    const page = await kino.browser.page(url, { timeoutMs: 15000 });
+    if (page && page.html) return page.html;
+  } catch (e) {
+    kino.log(`Error en WebView: ${e.message}`);
   }
+  return "";
 }
+// --- BROWSE (Paginación con WebView) ---
+export async function browse(ref, cursor) {
+  const page = cursor ? parseInt(cursor, 10) : 1;
+  
+  // Si no hay referencia, por defecto cargamos películas
+  let url = ref || `${BASE_URL}/movies/peliculas`;
 
-// --- GENERADOR DE CABECERAS ---
-function getHeaders(isAjax = false) {
-  const h = { 
-    "User-Agent": UA, 
-    "Referer": `${BASE_URL}/movies/` 
+  // Agregamos la paginación a la URL (asumiendo que usan ?page=2 o &page=2)
+  if (page > 1) {
+    url += url.includes("?") ? `&page=${page}` : `?page=${page}`;
+  }
+
+  kino.log(`Paginando: ${url}`);
+  const html = await getHtml(url);
+  const items = extractItems(html);
+  
+  kino.log(`browse: ${html.length} bytes, ${items.length} items extraídos (Página ${page})`);
+
+  return {
+    items: items,
+    // Si la extracción nos devolvió una cantidad considerable de tarjetas (ej. 20 o más),
+    // asumimos que existe una página siguiente y le pedimos a Kino que cargue la próxima al hacer scroll.
+    next: items.length >= 20 ? String(page + 1) : null
   };
-  if (isAjax) h["X-Requested-With"] = "XMLHttpRequest";
-  return h;
 }
-
 // --- EXTRACTOR DE TARJETAS HTML ---
 function extractItems(html) {
   const items = [];
@@ -99,34 +83,42 @@ function extractItems(html) {
   return items;
 }
 
-// --- 2. HOME ---
+// --- HOME ---
 export async function home() {
-  await ensureAccess();
-
-  let html = await getHtml(`${BASE_URL}/movies/home.php`, true);
-  if (!html) html = await getHtml(`${BASE_URL}/movies/`, false);
+  kino.log(`Descargando Home...`);
+  let html = await getHtml(`${BASE_URL}/movies/home.php`);
+  
+  if (!html || html.length < 500) {
+    kino.log(`home.php falló, intentando /movies/`);
+    html = await getHtml(`${BASE_URL}/movies/`);
+  }
 
   const items = extractItems(html);
-  kino.log(`home: ${html.length} bytes, ${items.length} items`);
-
+  kino.log(`home: ${html.length} bytes, ${items.length} items extraídos`);
+  
   if (items.length === 0) return [];
   return [{ id: "h-recientes", title: "Catálogo PelisJuanita (.com)", ref: "inicio", items }];
 }
 
-// --- 3. SEARCH ---
+// --- SEARCH ---
 export async function search(query) {
-  await ensureAccess();
   if (!query || !query.q) return [];
-  const html = await getHtml(`${BASE_URL}/movies/search?s=${encodeURIComponent(query.q)}`);
-  return extractItems(html);
+  const term = encodeURIComponent(query.q);
+  
+  kino.log(`Buscando: ${query.q}`);
+  const html = await getHtml(`${BASE_URL}/movies/search?s=${term}`);
+  
+  const items = extractItems(html);
+  kino.log(`search: ${html.length} bytes, ${items.length} items extraídos`);
+  
+  return items;
 }
 
-// --- 4. EPISODES ---
+// --- EPISODES ---
 export async function episodes(ref) {
-  await ensureAccess();
-  const res = await kino.fetch(ref, { headers: getHeaders(false) });
-  if (!res.ok) throw kino.error("not_found", "No se pudo cargar la página");
-  const html = await res.text();
+  kino.log(`Cargando ficha: ${ref}`);
+  const html = await getHtml(ref);
+  if (!html) throw kino.error("not_found", "No se pudo cargar la página de la película.");
 
   const metadata = {};
   const descMatch = html.match(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i);
@@ -145,20 +137,21 @@ export async function episodes(ref) {
   };
 }
 
-// --- 5. RESOLVE ---
+// --- RESOLVE ---
 export async function resolve(ref) {
-  await ensureAccess();
+  kino.log(`Resolviendo video para: ${ref}`);
   const visited = new Set();
   const allStreams = [];
 
+  // Función interna para escarbar iframes. Usa fetch porque los iframes externos 
+  // (Voe, Streamwish, etc.) generalmente no tienen el Cloudflare de la página principal.
   async function extractVideo(url, referer, depth, customLabel) {
     if (depth > 3 || visited.has(url)) return; 
     visited.add(url);
     if (url.startsWith("//")) url = "https:" + url;
 
     const currentOrigin = url.match(/^(https?:\/\/[^\/]+)/i)?.[1] || url;
-    const reqHeaders = getHeaders();
-    reqHeaders["Referer"] = referer;
+    const reqHeaders = { "User-Agent": UA, "Referer": referer };
     const hostName = customLabel || new URL(currentOrigin).hostname.replace('www.', '');
 
     try {
@@ -188,6 +181,7 @@ export async function resolve(ref) {
       }
 
       if (streamUrl) {
+        kino.log(`Video encontrado en: ${hostName}`);
         allStreams.push({ label: hostName, url: streamUrl, headers: { "User-Agent": UA, "Referer": currentOrigin + "/", "Origin": currentOrigin } });
         return; 
       }
@@ -200,21 +194,24 @@ export async function resolve(ref) {
     } catch (e) {}
   }
 
-  const res = await kino.fetch(ref, { headers: getHeaders(false) });
-  if (!res.ok) throw kino.error("unavailable", "No se pudo cargar la página del reproductor.");
-  const mainHtml = await res.text();
+  // 1. Cargamos el HTML principal usando getHtml (que usa el WebView si hay Cloudflare)
+  const mainHtml = await getHtml(ref);
+  if (!mainHtml) throw kino.error("unavailable", "No se pudo cargar la página del reproductor.");
 
+  // 2. Extraemos iframes de la página principal
   const iframeRegex = /<iframe[^>]+src=["'](http[^"']+)["']/gi;
   let match;
   while ((match = iframeRegex.exec(mainHtml)) !== null) {
     await extractVideo(match[1].replace(/&amp;/g, "&"), ref, 1, null);
   }
 
+  // 3. Extraemos botones de servidores de la página principal
   const dataRegex = /data-(?:url|server|video|link)=["'](http[^"']+)["']/gi;
   while ((match = dataRegex.exec(mainHtml)) !== null) {
     await extractVideo(match[1].replace(/&amp;/g, "&"), ref, 1, null);
   }
 
+  // 4. Si logramos extraer videos, construimos la respuesta con el menú HQ
   if (allStreams.length > 0) {
     const primary = allStreams[0];
     const finalResponse = { url: primary.url, headers: primary.headers };
@@ -224,5 +221,5 @@ export async function resolve(ref) {
     return finalResponse;
   }
 
-  throw kino.error("unavailable", "No se pudo extraer el video.");
+  throw kino.error("unavailable", "No se encontraron servidores reproducibles.");
 }

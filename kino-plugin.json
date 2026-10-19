@@ -1,7 +1,7 @@
 {
   "id": "test-pelis-juanita",
   "name": "Pelis Juanita (.com)",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "apiVersion": 6,
   "browser": "pages",
   "entry": "plugin.js",
@@ -35,6 +35,7 @@
   "capabilities": [
     "search",
     "home",
+    "browse",
   
     "episodes",
     "resolve"
